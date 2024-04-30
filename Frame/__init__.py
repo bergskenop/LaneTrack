@@ -68,7 +68,8 @@ class Frame():
         else:
             alpha = 0.25
             red_segment_rgb = cv2.cvtColor(self.red_segment, cv2.COLOR_GRAY2RGB)
-            self.filled_image = cv2.addWeighted(frame, 1 - alpha, red_segment_rgb, alpha, 0)
+            model_image = self.detection_results.plot()
+            self.filled_image = cv2.addWeighted(model_image, 1 - alpha, red_segment_rgb, alpha, 0)
             self.state_verbose = "Swimmer lost"
             self.state = 2
             print("Swimmer ID lost, trying to relocate swimmers by analysing lane")
