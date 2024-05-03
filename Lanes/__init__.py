@@ -6,28 +6,33 @@ from helper import *
 import ColorFilter
 
 class Lane:
-    def __init__(self, frame, contour):
+    def __init__(self, frame, contour, cf=ColorFilter.Colorfilter()):
+        self.cf = cf
         self.lane_n = None
         self.frame = frame
         self.lane_mask = np.zeros_like(frame)
         self.contour_area = cv2.contourArea(contour)
         cv2.drawContours(self.lane_mask, [contour], -1, (255, 255, 255), thickness=cv2.FILLED)
         self.red_lines = []
-        self.cf = ColorFilter.Colorfilter()
         self.visual_lane = None
 
     def track_lane(self, frame):
         frame_cpy = frame.copy()
-        lane_mask = self.cf.get_lanes(frame_cpy, redMode=False)[1]
+        _, lane_mask = self.cf.get_lanes(frame_cpy, redMode=False)
+
         border_mask = self.cf.swimming_pool_box(frame_cpy)[0]
+
         if border_mask is not None:
             mask = cv2.bitwise_or(lane_mask, border_mask)
             mask = cv2.bitwise_not(mask)
         else:
             mask = cv2.bitwise_not(lane_mask)
+
         contours, _ = cv2.findContours(mask[:, :, 0], cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         valid_contours = validate_contours(frame, contours, self.contour_area)
+        cv2.drawContours(frame_cpy, valid_contours, -1, (255, 0, 255), thickness=cv2.FILLED)
+
         if valid_contours is not None:
             for contour in valid_contours:
                 frame_mask_cpy = frame.copy()
@@ -37,7 +42,7 @@ class Lane:
                 overlap = cv2.bitwise_and(new_mask, self.lane_mask)
 
                 overlap_percentage = cv2.countNonZero(overlap[:, :, 0])/cv2.countNonZero(self.lane_mask[:, :, 0])
-                if overlap_percentage > 0.8:
+                if overlap_percentage > 0.4:
                     self.contour_area = cv2.contourArea(contour)
                     filled_image = cv2.addWeighted(frame, 1 - alpha, new_mask, alpha, 0)
                     self.visual_lane = filled_image

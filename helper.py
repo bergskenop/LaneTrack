@@ -7,26 +7,41 @@ import torch
 
 import ColorFilter
 
-def read_video(video_path):
-    """read video is a generator class yielding frames"""
-    print(f'Processing video :{video_path.partition("/")[-1]}')
+def read_video(video_path: str, frame_skip: int = 1):
+    """
+    Read video and yield frames at specified intervals.
+
+    Args:
+        video_path (str): Path to the video file.
+        frame_skip (int, optional): Number of frames to skip between reads. Default is 1.
+
+    Yields:
+        frame: A frame from the video.
+    """
+    print(f'\nProcessing video: {video_path.partition("/")[-1]}')
     cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise ValueError("Unable to open video file. Please check the file path or format.")
+
     start_frame_n = 0
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame_n)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) - start_frame_n
     print(f"Total frames: {total_frames}")
+
     frame_n = 0
     while True:
         ret, frame = cap.read()
         if not ret or frame is None:
             break
-        if frame_n % 1 == 0:
+        if frame_n % frame_skip == 0:
             progress = int(50 * frame_n / total_frames)
-            percentage = (round(100 * frame_n / total_frames))
+            percentage = round(100 * frame_n / total_frames)
             bar = f"[{'█' * progress}{' ' * (50 - progress)}] {percentage}%"
-            # print(f'\rProcessing footage {bar}', end='', flush=True)
+            print(f'\rProcessing footage {bar}', end='', flush=True)
             yield frame
         frame_n += 1
+
+    cap.release()
 
 
 def display(img, title='image', max_size=500000):
@@ -56,7 +71,7 @@ def validate_contours(frame, contours, prev_contour_area=200):
         hsv_result_mask = cv2.inRange(result, lower_blue, upper_blue)
         blue_pixels = cv2.countNonZero(hsv_result_mask)
 
-        if blue_pixels / contour_pixels >= 0.6:
+        if blue_pixels / contour_pixels >= 0.5:
             valid_contours.append(contour)
 
     if valid_contours:
@@ -65,7 +80,7 @@ def validate_contours(frame, contours, prev_contour_area=200):
         return valid_contours
 
     else:
-        print('No valid contours found')
+        # print('No valid contours found')
         return None
 
 
@@ -135,17 +150,22 @@ def put_text_on_image(frame, text, state):
     # Define text parameters
     font = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = 1
-    if state == 0: # Swimmer detected and tracking
+
+    if state == 0:  # Swimmer detected and tracking
         font_color = (0, 255, 0)  # Green
-    elif state == 1: # Swimmer crossing segment
+    elif state == 1:  # Swimmer crossing segment
         font_color = (255, 0, 255)  # Purple
     else:  # Swimmer lost
-        font_color = (255, 0, 0)  # Purple
+        font_color = (255, 0, 0)  # Red
+
     thickness = 2
-    text_org = (10, 30)  # Position of the text (top left corner)
+    text_org = (10, 30)  # Position of the first line of text (top left corner)
 
     # Put text on the image
-    cv2.putText(frame, text, text_org, font, font_scale, font_color, thickness)
+    for i, line in enumerate(text):
+        if i > 0:
+            text_org = (text_org[0], text_org[1] + 30)  # Increment y-coordinate for subsequent lines
+        cv2.putText(frame, line, text_org, font, font_scale, font_color, thickness)
 
     return frame
 
