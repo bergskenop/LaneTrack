@@ -3,7 +3,7 @@ from helper import *
 
 class Swimmer():
     def __init__(self, model=None):
-        self.model = YOLO('weights/yolov8m_swimmer_v7.pt')if model is None else model
+        self.model = YOLO('weights/yolov8n_swimmer_v8.pt')if model is None else model
         self.position = None
         self.id = None
         self.times = []

@@ -31,7 +31,7 @@ def read_video(video_path: str, frame_skip: int = 1):
     frame_n = 0
     while True:
         ret, frame = cap.read()
-        if not ret or frame is None:
+        if not ret or frame is None or frame_n >= 3900: #Implemented hard stop
             break
         if frame_n % frame_skip == 0:
             progress = int(50 * frame_n / total_frames)

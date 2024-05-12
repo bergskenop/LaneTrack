@@ -174,10 +174,14 @@ class Colorfilter:
 
     def get_red_segments(self, frame, lookingAt=0):
         # TODO Merge segments that are close by one another (occurs at end of lane with flags overlapping)
+        # Merging should happen when lokking at right or left side of pool
         frame_segment_mask = self.get_lane_mask(frame, redMode=True)
 
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        frame_segment_mask = cv2.dilate(frame_segment_mask, kernel, iterations=3)
+        if lookingAt == 0 or lookingAt == 1:
+            frame_segment_mask = cv2.dilate(frame_segment_mask, kernel, iterations=1)
+        else:
+            frame_segment_mask = cv2.dilate(frame_segment_mask, kernel, iterations=5)
 
         contours, _ = cv2.findContours(frame_segment_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 

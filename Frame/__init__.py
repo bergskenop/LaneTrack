@@ -11,7 +11,7 @@ import Swimmer
 import Lanes.LaneDetect
 
 
-class Frame():
+class Frame:
     def __init__(self, frame, model, cf=ColorFilter.Colorfilter(), LD=Lanes.LaneDetect.LaneDetect(), lane=None,
                  lookingAt=2, swimmer_id=None):
         self.cf = cf
@@ -44,30 +44,46 @@ class Frame():
         self.state_verbose = []
         self.state = 0
 
-        self.remarkable = self.define_remarkable()
+        self.remarkable = False
 
     def add_frame(self, frame, model, lookingAt):
         self.state_verbose = []
         # region TrackLaneAndSwimmer
+        # Track the object ID
         self.selected_lane.track_lane(frame)
         self.detection_results = model.track(frame, tracker=self.tracker, verbose=False,
                                              persist=True, conf=0.05, iou=0.2, augment=True,
                                              agnostic_nms=True)
-        # endregion
-
-        self.red_segment, self.red_segment_line = self.cf.get_red_segments(frame, lookingAt=lookingAt)
         boxes_id = self.detection_results[0].boxes.id
-        swimmer_box = self.detection_results[0].boxes.xyxy[(boxes_id == self.swimmer_id).nonzero()]
-
+        try:
+            swimmer_box = self.detection_results[0].boxes.xyxy[(boxes_id == self.swimmer_id).nonzero()]
+        except Exception as e:
+            print("\nAn error occurred:", str(e))
+            return False
+        # endregion
+        # region GetRedSegments
+        self.red_segment, self.red_segment_line = self.cf.get_red_segments(frame, lookingAt=lookingAt)
+        # endregion
         # region CheckSegmentCrossing
         if swimmer_box.numel() > 0:
-            model_image = self.detection_results[0].plot()
-            self.detected_image = draw_box_on_image(model_image, swimmer_box, color=(0, 255, 0))
-            alpha = 0.25
-            red_segment_rgb = cv2.cvtColor(self.red_segment, cv2.COLOR_GRAY2RGB)
-            segment_line_overlay = cv2.addWeighted(self.detected_image, 1 - alpha, red_segment_rgb, alpha, 0)
-            self.filled_image = segment_line_overlay
+            # region visualisation
+            # model_image = self.detection_results[0].plot()
+            # self.detected_image = draw_box_on_image(model_image, swimmer_box, color=(0, 255, 0))
+            # alpha = 0.25
+            # red_segment_rgb = cv2.cvtColor(self.red_segment, cv2.COLOR_GRAY2RGB)
+            # segment_line_overlay = cv2.addWeighted(self.detected_image, 1 - alpha, red_segment_rgb, alpha, 0)
 
+            alpha = 0.25
+            red_rgb = np.zeros((self.red_segment.shape[0], self.red_segment.shape[1], 3), dtype=np.uint8)
+            red_rgb[self.selected_lane.lane_mask[:,:,0] == 255] = (255, 0, 255)
+            red_rgb[self.red_segment == 255] = (255, 255, 255)
+            model_image = self.detection_results[0].plot()
+            model_image = draw_box_on_image(model_image, swimmer_box, color=(0, 255, 0), thickness=3)
+
+            self.filled_image = cv2.addWeighted(model_image, 1 - alpha, red_rgb, alpha, 0)
+
+            # self.filled_image = segment_line_overlay
+            # endregion
             if box_intersects_any_line(swimmer_box, self.red_segment_line):
                 # TODO issue with line crossing FIX
                 self.state_verbose.append("Swimmer crossed segment line")
@@ -81,9 +97,10 @@ class Frame():
         else:
             """
             If swimmer is lost:
-            This part will check if a bounding box with a new ID can be found within the tracked swimming lane
+            This part will check if a bounding box with a new ID of class swimmer can be found within the tracked swimming lane
             """
             tracked_lane = self.selected_lane.lane_mask
+            cv2.imshow("tracked_lane", tracked_lane)
             for result in self.detection_results:
                 boxes = result.boxes.cpu().numpy()
                 xyxys = boxes.xyxy
@@ -104,26 +121,32 @@ class Frame():
             alpha = 0.25
             red_rgb = np.zeros((self.red_segment.shape[0], self.red_segment.shape[1], 3), dtype=np.uint8)
             red_rgb[self.red_segment == 255] = (0, 0, 255)
+            red_rgb[self.selected_lane.lane_mask[:,:,0] == 255] = (255, 0, 255)
             model_image = self.detection_results[0].plot()
             self.filled_image = cv2.addWeighted(model_image, 1 - alpha, red_rgb, alpha, 0)
             self.state_verbose.append("Swimmer lost")
             self.state = 2
             print("Swimmer ID lost, trying to relocate swimmers by analysing lane")
         # endregion
+        # region VerboseHandling
         if lookingAt == 0:
             self.state_verbose.append("Looking at right side of pool")
         elif lookingAt == 1:
             self.state_verbose.append("Looking at middle of pool")
         else:
             self.state_verbose.append("Looking at left side of pool")
-        self.define_remarkable()
+        # endregion
+        # region DefineRemarkable
+        if self.state == 1:
+            self.remarkable = True
+        else:
+            self.remarkable = False
+        # endregion
+        return True
 
     def define_remarkable(self):
         """
         A frame will be defined as remarkable if
             - A detected swimmer passes a segment.
         """
-        if self.state == 1:
-            self.remarkable = True
-        else:
-            self.remarkable = False
+

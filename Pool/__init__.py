@@ -57,7 +57,7 @@ class Pool():
         self.tracker = 'botsort.yaml'
         self.model = YOLO('weights/yolov8n_swimmer_v7.pt')
         self.frame_instance = None
-        # Variable lookingAt indicates whether we're looking at right side (0), left side (1) or the middle of the pool (2)
+        # Variable lookingAt indicates whether we're looking at right side (0), middle (1) or the left side of the pool (2)
         self.lookingAt = 2
 
     def setup(self):
@@ -109,16 +109,18 @@ class Pool():
         if data_type == "video":
             for idx, frame in enumerate(read_video(data_path, frame_skip=fps_div)):
                 # region PoolRegionDecision
+                # Describes where the camera is pointed at 0 being right side, 1 middle and 2 left side.
                 if len(self.LD.get_median_rotation()) >= idx:
-                    if self.middle_angle - self.range_angle / 4 < self.LD.rotation_list_median[idx] < self.middle_angle \
+                    if self.middle_angle - self.range_angle / 4 < self.LD.rotation_list_median[idx-1] < self.middle_angle \
                             + self.range_angle / 4:
                         self.lookingAt = 1
-                    elif self.LD.rotation_list_median[idx] > self.middle_angle + self.range_angle / 4:
+                    elif self.LD.rotation_list_median[idx-1] > self.middle_angle + self.range_angle / 4:
                         self.lookingAt = 2
-                    elif self.LD.rotation_list_median[idx] < self.middle_angle - self.range_angle / 4:
+                    elif self.LD.rotation_list_median[idx-1] < self.middle_angle - self.range_angle / 4:
                         self.lookingAt = 0
                 # endregion
                 # region SelectLaneAndSwimmer
+                # Allows user to select lane and swimmer
                 if self.selected_lane is None:
                     self.select_lane(frame)
                     self.swimmer = Swimmer.Swimmer()
@@ -129,15 +131,18 @@ class Pool():
                     print(f'Tracking swimmer with id: {self.swimmer.id}')
                 # endregion
                 # region TrackAndDetectSegmentCrossing
+                # Adds new frame to frame object, passes the detection model alongside the lookingAT variable
+                # If a frame is remarkable i.e. crossing a segment it gets added to the frame list for further use.
                 else:
-                    self.frame_instance.add_frame(frame, self.model, self.lookingAt)
-                    if self.frame_instance.remarkable:
-                        self.remarkable_frames.append((idx, self.frame_instance))
-                    annotated_image = put_text_on_image(self.frame_instance.filled_image,
-                                                        self.frame_instance.state_verbose, self.frame_instance.state)
-                    display(annotated_image)
-                    cv2.waitKey(5)
-                    yield annotated_image
+                    ret = self.frame_instance.add_frame(frame, self.model, self.lookingAt)
+                    if ret:
+                        if self.frame_instance.remarkable:
+                            self.remarkable_frames.append((idx, self.frame_instance))
+                        annotated_image = put_text_on_image(self.frame_instance.filled_image,
+                                                            self.frame_instance.state_verbose, self.frame_instance.state)
+                        display(annotated_image)
+                        cv2.waitKey(5)
+                        yield annotated_image
                 # endregion
         # region ImageAndDirectoryHandling
         elif data_type == 'image':
