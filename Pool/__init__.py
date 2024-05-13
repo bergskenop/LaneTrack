@@ -38,21 +38,26 @@ def mouse_callback(event, x, y, flags, param):
 
 
 class Pool():
-    def __init__(self, type=None):
+    def __init__(self, type=None, total_frames=None):
         """
         :param type: 50m or 25m pool
 
         """
         self.ready = False
         self.remarkable_frames = []
+        self.total_frames = total_frames
+        self.frame_indicator = []
         self.lane_angles = []
         self.Lanes = []
         self.type = type if type is not None else None
         self.selected_lane = None
+
         self.LD = Lanes.LaneDetect.LaneDetect(houghPrecisionDegree=np.pi / 720)
-        self.middle_angle = None
-        self.range_angle = None
+        self.angle_upper_bound = None
+        self.angle_lower_bound = None
+
         self.cf = ColorFilter.Colorfilter()
+
         self.swimmer = None
         self.tracker = 'botsort.yaml'
         self.model = YOLO('weights/yolov8n_swimmer_v7.pt')
@@ -63,14 +68,14 @@ class Pool():
     def setup(self):
         self.ready = True
 
-    def initialise_lanes(self, data_path, frame_indent=200, fps_div=1):
+    def initialise_lanes(self, data_path, frame_indent=100, fps_div=1):
         """
         :param frame_indent: can be used to skip frames within recording, accelerating code
         :param data_path: video location
         runs through entire video analysing lane divider angles
         results will be used to estimate location within swimming pool
         """
-        print("\nLooping video to analyse reference position")
+        print("Looping video to analyse reference position")
         for idx, frame in enumerate(read_video(data_path, frame_skip=frame_indent)):
             self.LD.append(frame, pos=int(idx * frame_indent / fps_div))
 
@@ -90,14 +95,27 @@ class Pool():
         self.LD.get_filtered_list()
         max_angle = max(self.LD.get_median_rotation())
         min_angle = min(self.LD.get_median_rotation())
-        self.range_angle = max_angle + abs(min_angle)
-        self.middle_angle = max_angle - self.range_angle / 2
+        range_angle = max_angle + abs(min_angle)
+        middle_angle = max_angle - range_angle / 2
 
         plt.title("Interpolated and filtered perceived lane angles")
         plt.xlabel("Frame index")
         plt.ylabel("Rotation (degrees)")
         plt.plot(self.LD.get_filtered_list())
+
+        lower_bound = middle_angle - (range_angle * 5 / 16)
+        upper_bound = middle_angle + (range_angle * 5 / 16)
+
+        self.angle_lower_bound = lower_bound
+        self.angle_upper_bound = upper_bound
+
+        plt.axhline(y=lower_bound, color='r', linestyle='--', label=f'y = {lower_bound}')
+        plt.axhline(y=upper_bound, color='g', linestyle='-.', label=f'y = {upper_bound}')
         plt.show()
+
+        print(f'lower_bound: {lower_bound}')
+        print(f'upper_bound: {upper_bound}')
+
 
     def process(self, data_path, fps_div=1):
         """
@@ -111,12 +129,11 @@ class Pool():
                 # region PoolRegionDecision
                 # Describes where the camera is pointed at 0 being right side, 1 middle and 2 left side.
                 if len(self.LD.get_median_rotation()) >= idx:
-                    if self.middle_angle - self.range_angle / 8 < self.LD.rotation_list_median[
-                        idx - 1] < self.middle_angle + 6 * self.range_angle / 8:
+                    if self.angle_lower_bound < self.LD.rotation_list_median[idx - 1] < self.angle_upper_bound:
                         self.lookingAt = 1
-                    elif self.LD.rotation_list_median[idx - 1] >= self.middle_angle + 6 * self.range_angle / 8:
+                    elif self.LD.rotation_list_median[idx - 1] > self.angle_upper_bound:
                         self.lookingAt = 2
-                    elif self.LD.rotation_list_median[idx - 1] <= self.middle_angle - self.range_angle / 8:
+                    elif self.LD.rotation_list_median[idx - 1] < self.angle_lower_bound:
                         self.lookingAt = 0
                 # endregion
                 # region SelectLaneAndSwimmer
@@ -134,7 +151,7 @@ class Pool():
                 # Adds new frame to frame object, passes the detection model alongside the lookingAT variable
                 # If a frame is remarkable i.e. crossing a segment it gets added to the frame list for further use.
                 else:
-                    ret = self.frame_instance.add_frame(frame, self.model, self.lookingAt)
+                    ret = self.frame_instance.add_frame(frame, self.model, self.lookingAt,idx)
                     if ret:
                         if self.frame_instance.remarkable:
                             self.remarkable_frames.append((idx, self.frame_instance))
@@ -146,6 +163,12 @@ class Pool():
                             break
                         yield annotated_image
                 # endregion
+            frame_numbers = [remarkable_frame[0] for remarkable_frame in self.remarkable_frames]
+            self.frame_indicator = [0] * (int(self.total_frames) + 1)
+
+            # Update the list with frame numbers present in the tuples
+            for frame_number in frame_numbers:
+                self.frame_indicator[frame_number] = 1
         # region ImageAndDirectoryHandling
         elif data_type == 'image':
             img = cv2.imread(data_path)
@@ -240,18 +263,17 @@ class Pool():
                                            persist=True, conf=0.05, iou=0.2, augment=True,
                                            agnostic_nms=True)
         for result in initial_results:
-            frame_cpy = frame.copy()
             boxes = result.boxes.cpu().numpy()
             xyxys = boxes.xyxy
             class_ids = boxes.cls
             object_ids = boxes.id
 
-            draw_boxes(frame_cpy, xyxys, class_ids)
+            draw_boxes(frame, xyxys, class_ids)
             cv2.namedWindow("Image", cv2.WINDOW_KEEPRATIO)
             cv2.setMouseCallback("Image", mouse_callback,
-                                 {'image': frame_cpy, 'xyxys': xyxys, 'class_ids': class_ids, 'object_ids': object_ids,
+                                 {'image': frame, 'xyxys': xyxys, 'class_ids': class_ids, 'object_ids': object_ids,
                                   'hovered_id': None})
-            cv2.imshow("Image", frame_cpy)
+            cv2.imshow("Image", frame)
             cv2.waitKey(0)
             cv2.destroyAllWindows()
     # endregion

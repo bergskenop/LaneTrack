@@ -47,7 +47,7 @@ class Frame:
 
         self.remarkable = False
 
-    def add_frame(self, frame, model, lookingAt):
+    def add_frame(self, frame, model, lookingAt, idx):
         self.state_verbose = []
         # region TrackLaneAndSwimmer
         # Track the object ID
@@ -64,26 +64,22 @@ class Frame:
         # endregion
         # region GetRedSegments
         self.red_segment, self.red_segment_line = self.cf.get_red_segments(frame, lookingAt=lookingAt)
+        cv2.imshow('self.red_segment', self.red_segment)
         # endregion
         if swimmer_box.numel() > 0:
             # region CheckSegmentCrossing
             # region visualisation
-            # model_image = self.detection_results[0].plot()
-            # self.detected_image = draw_box_on_image(model_image, swimmer_box, color=(0, 255, 0))
-            # alpha = 0.25
-            # red_segment_rgb = cv2.cvtColor(self.red_segment, cv2.COLOR_GRAY2RGB)
-            # segment_line_overlay = cv2.addWeighted(self.detected_image, 1 - alpha, red_segment_rgb, alpha, 0)
 
             alpha = 0.25
             red_rgb = np.zeros((self.red_segment.shape[0], self.red_segment.shape[1], 3), dtype=np.uint8)
             red_rgb[self.selected_lane.lane_mask[:,:,0] == 255] = (255, 0, 255)
             red_rgb[self.red_segment == 255] = (255, 255, 255)
             model_image = self.detection_results[0].plot()
+
             model_image = draw_box_on_image(model_image, swimmer_box, color=(0, 255, 0), thickness=3)
 
             self.filled_image = cv2.addWeighted(model_image, 1 - alpha, red_rgb, alpha, 0)
 
-            # self.filled_image = segment_line_overlay
             # endregion
             if box_intersects_any_line(swimmer_box, self.red_segment_line):
                 # TODO issue with line crossing FIX
@@ -93,7 +89,7 @@ class Frame:
                 self.state_verbose.append("Swimmer detected and tracking")
                 self.state = 0
             self.swimmer.append_box(swimmer_box)
-        # endregion
+            # endregion
         # region SwimmerLostNewID
 
         else:
@@ -115,7 +111,7 @@ class Frame:
                     overlap_with_lane = cv2.bitwise_and(frame_mask[:, :, 0], tracked_lane[:, :, 0], mask=None)
                     rect_cnt = cv2.countNonZero(frame_mask[:, :, 0])
                     overlap_cnt = cv2.countNonZero(overlap_with_lane)
-                    if overlap_cnt / rect_cnt > 0.9 and cls == 1:
+                    if overlap_cnt / rect_cnt > 0.8 and cls == 1:
                         print(f"new ID found, now tracking swimmer ID: {object_id}")
                         self.swimmer.id = object_id
                         if box_intersects_any_line(xyxy.reshape(1, 1, 4), self.red_segment_line):

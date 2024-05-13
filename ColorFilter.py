@@ -178,10 +178,10 @@ class Colorfilter:
         frame_segment_mask = self.get_lane_mask(frame, redMode=True)
 
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        if lookingAt == 0 or lookingAt == 1:
+        if lookingAt == 1: # middle of pool is more prone interference from overhanging segments
             frame_segment_mask = cv2.dilate(frame_segment_mask, kernel, iterations=1)
         else:
-            frame_segment_mask = cv2.dilate(frame_segment_mask, kernel, iterations=5)
+            frame_segment_mask = cv2.dilate(frame_segment_mask, kernel, iterations=10)
 
         contours, _ = cv2.findContours(frame_segment_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -195,10 +195,8 @@ class Colorfilter:
             largest_contour_area = cv2.contourArea(sorted_contours[0])
             contours = [cnt for cnt in sorted_contours if cv2.contourArea(cnt) >= 0.6 * largest_contour_area]
 
-            cv2.drawContours(frame_mask, contours, -1, 255, thickness=cv2.FILLED)
-
             if contours:  # Ensure there are contours after filtering
-                if lookingAt == 1:
+                if lookingAt == 1: # Handle middle of pool
                     for contour in contours:
 
                         M = cv2.moments(contour)
@@ -223,40 +221,52 @@ class Colorfilter:
                                     line_list.append((centroid, closest_centroid))
                 elif lookingAt == 0:
                     leftmost_points = []
-                    for contour in contours:
-                        if len(contour) >= 5:
-                            leftmost_point = tuple(contour[contour[:, :, 0].argmin()][0])
-                            leftmost_points.append(leftmost_point)
-
-                    if len(leftmost_points) > 1:
-                        kdtree = KDTree(leftmost_points)
-
-                        for i, leftmost_point in enumerate(leftmost_points):
-                            closest_index = kdtree.query(leftmost_point, k=2)[1][1]  # Index of the closest neighbor
-                            closest_point = leftmost_points[closest_index]
-                            distance = np.linalg.norm(np.array(leftmost_point) - np.array(closest_point))
-                            if distance < frame.shape[0] / 2:
-                                cv2.line(frame_mask, leftmost_point, closest_point, (255, 0, 0), 5)
-                                line_list.append((leftmost_point, closest_point))
-
-                elif lookingAt == 2:
                     rightmost_points = []
                     for contour in contours:
                         if len(contour) >= 5:
+                            leftmost_point = tuple(contour[contour[:, :, 0].argmin()][0])
                             rightmost_point = tuple(contour[contour[:, :, 0].argmax()][0])
+                            leftmost_points.append(leftmost_point)
                             rightmost_points.append(rightmost_point)
 
-                    if len(rightmost_points) > 1:
-                        kdtree = KDTree(rightmost_points)
+                    # Iterate over each contour
+                    for i, contour1 in enumerate(contours):
+                        if len(contour1) >= 4:
+                            leftmost_point1 = leftmost_points[i]
+                            rightmost_point1 = rightmost_points[i]
+                            min_distance_left = float('inf')  # Initialize minimum distance for leftmost points
+                            min_distance_right = float('inf')  # Initialize minimum distance for rightmost points
+                            closest_left_point = None
+                            closest_right_point = None
 
-                        for i, rightmost_point in enumerate(rightmost_points):
-                            closest_index = kdtree.query(rightmost_point, k=2)[1][1]  # Index of the closest neighbor
-                            closest_point = rightmost_points[closest_index]
-                            # Connect right-most points of neighboring contours
-                            distance = np.linalg.norm(np.array(rightmost_point) - np.array(closest_point))
-                            if distance < frame.shape[0] / 2:
-                                cv2.line(frame_mask, rightmost_point, closest_point, (255, 0, 0), 5)
-                                line_list.append((rightmost_point, closest_point))
+                            # Iterate over each other contour
+                            for j, contour2 in enumerate(contours):
+                                if i != j and len(contour2) >= 4:  # Avoid comparing a contour with itself
+                                    leftmost_point2 = leftmost_points[j]
+                                    rightmost_point2 = rightmost_points[j]
+
+                                    # Calculate distances for leftmost points
+                                    distance_left = np.linalg.norm(
+                                        np.array(leftmost_point1) - np.array(leftmost_point2))
+                                    if distance_left < min_distance_left:
+                                        min_distance_left = distance_left
+                                        closest_left_point = leftmost_point2
+
+                                    # Calculate distances for rightmost points
+                                    distance_right = np.linalg.norm(
+                                        np.array(rightmost_point1) - np.array(rightmost_point2))
+                                    if distance_right < min_distance_right:
+                                        min_distance_right = distance_right
+                                        closest_right_point = rightmost_point2
+
+                            # Check if the closest points are within half the frame height
+                            if closest_left_point is not None and min_distance_left < frame.shape[0] / 2:
+                                cv2.line(frame_mask, leftmost_point1, closest_left_point, (255, 0, 0), 5)
+                                line_list.append((leftmost_point1, closest_left_point))
+
+                            if closest_right_point is not None and min_distance_right < frame.shape[0] / 2:
+                                cv2.line(frame_mask, rightmost_point1, closest_right_point, (255, 0, 0), 5)
+                                line_list.append((rightmost_point1, closest_right_point))
 
         # cv2.imshow("frame segment mask", frame_mask)
 
