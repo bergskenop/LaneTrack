@@ -234,18 +234,17 @@ class Colorfilter:
                         if len(contour1) >= 4:
                             leftmost_point1 = leftmost_points[i]
                             rightmost_point1 = rightmost_points[i]
-                            min_distance_left = float('inf')  # Initialize minimum distance for leftmost points
-                            min_distance_right = float('inf')  # Initialize minimum distance for rightmost points
+                            min_distance_left = float('inf')
+                            min_distance_right = float('inf')
                             closest_left_point = None
                             closest_right_point = None
 
                             # Iterate over each other contour
                             for j, contour2 in enumerate(contours):
-                                if i != j and len(contour2) >= 4:  # Avoid comparing a contour with itself
+                                if i != j and len(contour2) >= 4:
                                     leftmost_point2 = leftmost_points[j]
                                     rightmost_point2 = rightmost_points[j]
 
-                                    # Calculate distances for leftmost points
                                     distance_left = np.linalg.norm(
                                         np.array(leftmost_point1) - np.array(leftmost_point2))
                                     if distance_left < min_distance_left:

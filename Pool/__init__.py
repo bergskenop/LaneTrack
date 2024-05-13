@@ -229,7 +229,7 @@ class Pool():
                 thickness = 2
                 if hovered_id is not None and object_id == hovered_id:
                     color = (0, 0, 255)
-                    thickness = 3
+                    thickness = 2
                 elif prev_hovered_id is not None and object_id == prev_hovered_id:
                     color = (0, 255, 0)
                     thickness = 2

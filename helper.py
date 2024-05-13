@@ -4,6 +4,7 @@ import random
 import cv2
 import numpy as np
 import torch
+from matplotlib import pyplot as plt
 from scipy.signal import butter, filtfilt
 
 import ColorFilter
@@ -189,8 +190,8 @@ def interpolate_nan(list):
     return data_array.tolist()
 
 def get_filtered_list(list):
-    fs = 15.0
-    cutoff = 2
+    fs = 50
+    cutoff = 1
     nyq = 0.5 * fs
     order = 11
 
@@ -200,3 +201,29 @@ def get_filtered_list(list):
     y = filtfilt(b, a, list)
 
     return y
+
+def plot_results(height_list=None, width_list=None, lane_angle_list=None, swimmer_cross_segment_list=None):
+    if height_list is not None:
+        plt.plot(get_filtered_list(interpolate_nan(height_list)))
+        plt.xlabel('Frame index')
+        plt.ylabel('Height')
+        plt.title('Plot of height')
+        plt.show()
+    if width_list is not None:
+        plt.plot(get_filtered_list(interpolate_nan(width_list)))
+        plt.xlabel('Frame index')
+        plt.ylabel('Width')
+        plt.title('Plot of width')
+        plt.show()
+    if lane_angle_list is not None:
+        plt.plot(lane_angle_list)
+        plt.xlabel('Frame index')
+        plt.ylabel('Angle (degrees)')
+        plt.title('Plot of lane angles')
+        plt.show()
+    if swimmer_cross_segment_list is not None:
+        plt.plot(swimmer_cross_segment_list)
+        plt.xlabel('Frame index')
+        plt.ylabel('Crossed (0->False; 1->True)')
+        plt.title('Plot of segment crossing')
+        plt.show()
