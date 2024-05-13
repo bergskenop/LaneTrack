@@ -4,10 +4,12 @@ import random
 import cv2
 import numpy as np
 import torch
+from scipy.signal import butter, filtfilt
 
 import ColorFilter
 
-def read_video(video_path: str, frame_skip: int = 1):
+
+def read_video(video_path: str, frame_skip: int = 1, verbose=True):
     """
     Read video and yield frames at specified intervals.
 
@@ -18,7 +20,7 @@ def read_video(video_path: str, frame_skip: int = 1):
     Yields:
         frame: A frame from the video.
     """
-    print(f'\nProcessing video: {video_path.partition("/")[-1]}')
+    if verbose: print(f'\nProcessing video: {video_path.partition("/")[-1]}')
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise ValueError("Unable to open video file. Please check the file path or format.")
@@ -26,18 +28,17 @@ def read_video(video_path: str, frame_skip: int = 1):
     start_frame_n = 0
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame_n)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) - start_frame_n
-    print(f"Total frames: {total_frames}")
 
     frame_n = 0
     while True:
         ret, frame = cap.read()
-        if not ret or frame is None or frame_n >= 3900: #Implemented hard stop
+        if not ret or frame is None or frame_n >= 3900:  # Implemented hard stop
             break
         if frame_n % frame_skip == 0:
             progress = int(50 * frame_n / total_frames)
             percentage = round(100 * frame_n / total_frames)
             bar = f"[{'█' * progress}{' ' * (50 - progress)}] {percentage}%"
-            print(f'\rProcessing footage {bar}', end='', flush=True)
+            if verbose: print(f'\rProcessing footage {bar}', end='', flush=True)
             yield frame
         frame_n += 1
 
@@ -99,13 +100,21 @@ def check_path_type(path):
 
     return "unknown"
 
+
 def part_of_swimmer(cx, cy, swimmer_box):
     xmin, ymin, xmax, ymax = swimmer_box
     return xmin <= cx <= xmax and ymin <= cy <= ymax
 
 
-def box_intersects_line(box, line):
-    box_left, box_top, box_right, box_bottom = box[0, 0, :]
+def box_intersects_line(box, line, verbose=False):
+    if verbose:
+        print(f'Type of box: {type(box)}: {box}')
+        print(f'Type of line: {type(line)}: {line}')
+
+    if len(box.shape) == 1:
+        box_left, box_top, box_right, box_bottom = box
+    elif len(box.shape) == 3 and box.shape[0] == 1 and box.shape[1] == 1:
+        box_left, box_top, box_right, box_bottom = box[0, 0]
     (line_x1, line_y1), (line_x2, line_y2) = line
 
     if (min(line_x1, line_x2) <= box_right and max(line_x1, line_x2) >= box_left and
@@ -127,6 +136,7 @@ def draw_box_on_image(frame, box, color=(255, 0, 0), thickness=4):
     left, top, right, bottom = box[0, 0, :]
     cv2.rectangle(frame, (int(left), int(top)), (int(right), int(bottom)), color, thickness)
     return frame
+
 
 def has_overlap_with_other_boxes(predefined_box, all_boxes):
     for box in all_boxes:
@@ -169,3 +179,24 @@ def put_text_on_image(frame, text, state):
 
     return frame
 
+
+def interpolate_nan(list):
+    data_array = np.array(list)
+    nan_indices = np.isnan(data_array)
+    indices = np.arange(len(data_array))
+    data_array[nan_indices] = np.interp(indices[nan_indices], indices[~nan_indices], data_array[~nan_indices])
+
+    return data_array.tolist()
+
+def get_filtered_list(list):
+    fs = 15.0
+    cutoff = 2
+    nyq = 0.5 * fs
+    order = 11
+
+    normal_cutoff = cutoff / nyq
+
+    b, a = butter(order, normal_cutoff, btype='low', analog=False)
+    y = filtfilt(b, a, list)
+
+    return y

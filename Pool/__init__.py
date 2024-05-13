@@ -63,7 +63,7 @@ class Pool():
     def setup(self):
         self.ready = True
 
-    def initialise_lanes(self, data_path, frame_indent=100, fps_div=1):
+    def initialise_lanes(self, data_path, frame_indent=200, fps_div=1):
         """
         :param frame_indent: can be used to skip frames within recording, accelerating code
         :param data_path: video location
@@ -107,16 +107,16 @@ class Pool():
         """
         data_type = check_path_type(data_path)
         if data_type == "video":
-            for idx, frame in enumerate(read_video(data_path, frame_skip=fps_div)):
+            for idx, frame in enumerate(read_video(data_path, frame_skip=fps_div, verbose=False)):
                 # region PoolRegionDecision
                 # Describes where the camera is pointed at 0 being right side, 1 middle and 2 left side.
                 if len(self.LD.get_median_rotation()) >= idx:
-                    if self.middle_angle - self.range_angle / 4 < self.LD.rotation_list_median[idx-1] < self.middle_angle \
-                            + self.range_angle / 4:
+                    if self.middle_angle - self.range_angle / 8 < self.LD.rotation_list_median[
+                        idx - 1] < self.middle_angle + 6 * self.range_angle / 8:
                         self.lookingAt = 1
-                    elif self.LD.rotation_list_median[idx-1] > self.middle_angle + self.range_angle / 4:
+                    elif self.LD.rotation_list_median[idx - 1] >= self.middle_angle + 6 * self.range_angle / 8:
                         self.lookingAt = 2
-                    elif self.LD.rotation_list_median[idx-1] < self.middle_angle - self.range_angle / 4:
+                    elif self.LD.rotation_list_median[idx - 1] <= self.middle_angle - self.range_angle / 8:
                         self.lookingAt = 0
                 # endregion
                 # region SelectLaneAndSwimmer
@@ -141,7 +141,9 @@ class Pool():
                         annotated_image = put_text_on_image(self.frame_instance.filled_image,
                                                             self.frame_instance.state_verbose, self.frame_instance.state)
                         display(annotated_image)
-                        cv2.waitKey(5)
+                        if cv2.waitKey(5) & 0xFF == ord("q"):
+                            cv2.destroyAllWindows()
+                            break
                         yield annotated_image
                 # endregion
         # region ImageAndDirectoryHandling

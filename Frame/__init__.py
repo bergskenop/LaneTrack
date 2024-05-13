@@ -20,7 +20,8 @@ class Frame:
                                              persist=True, conf=0.05, iou=0.2, augment=True,
                                              agnostic_nms=True)[0]
         # Allow user to select swimmer to track
-        self.swimmer_id = swimmer_id
+        self.swimmer = Swimmer.Swimmer()
+        self.swimmer.id = swimmer_id
         self.swimmer_positions = self.detection_results.boxes.xyxy
         self.detected_image = self.detection_results.plot()
 
@@ -56,7 +57,7 @@ class Frame:
                                              agnostic_nms=True)
         boxes_id = self.detection_results[0].boxes.id
         try:
-            swimmer_box = self.detection_results[0].boxes.xyxy[(boxes_id == self.swimmer_id).nonzero()]
+            swimmer_box = self.detection_results[0].boxes.xyxy[(boxes_id == self.swimmer.id).nonzero()]
         except Exception as e:
             print("\nAn error occurred:", str(e))
             return False
@@ -64,8 +65,8 @@ class Frame:
         # region GetRedSegments
         self.red_segment, self.red_segment_line = self.cf.get_red_segments(frame, lookingAt=lookingAt)
         # endregion
-        # region CheckSegmentCrossing
         if swimmer_box.numel() > 0:
+            # region CheckSegmentCrossing
             # region visualisation
             # model_image = self.detection_results[0].plot()
             # self.detected_image = draw_box_on_image(model_image, swimmer_box, color=(0, 255, 0))
@@ -91,6 +92,7 @@ class Frame:
             else:
                 self.state_verbose.append("Swimmer detected and tracking")
                 self.state = 0
+            self.swimmer.append_box(swimmer_box)
         # endregion
         # region SwimmerLostNewID
 
@@ -103,7 +105,7 @@ class Frame:
             cv2.imshow("tracked_lane", tracked_lane)
             for result in self.detection_results:
                 boxes = result.boxes.cpu().numpy()
-                xyxys = boxes.xyxy
+                xyxys = result.boxes.xyxy
                 class_ids = boxes.cls
                 object_ids = boxes.id
                 for xyxy, cls, object_id in zip(xyxys, class_ids, object_ids):
@@ -115,13 +117,23 @@ class Frame:
                     overlap_cnt = cv2.countNonZero(overlap_with_lane)
                     if overlap_cnt / rect_cnt > 0.9 and cls == 1:
                         print(f"new ID found, now tracking swimmer ID: {object_id}")
-                        self.swimmer_id = object_id
+                        self.swimmer.id = object_id
+                        if box_intersects_any_line(xyxy.reshape(1, 1, 4), self.red_segment_line):
+                            # TODO issue with line crossing FIX
+                            self.state_verbose.append("Swimmer crossed segment line")
+                            self.state = 1
+                        else:
+                            self.state_verbose.append("Swimmer detected and tracking")
+                            self.state = 0
+                        self.swimmer.append_box(xyxy.reshape(1, 1, 4))
                         break
+                # If no swimmer is found append None to swimmer box (interpolation)
+                self.swimmer.append_box(None)
 
             alpha = 0.25
             red_rgb = np.zeros((self.red_segment.shape[0], self.red_segment.shape[1], 3), dtype=np.uint8)
             red_rgb[self.red_segment == 255] = (0, 0, 255)
-            red_rgb[self.selected_lane.lane_mask[:,:,0] == 255] = (255, 0, 255)
+            red_rgb[self.selected_lane.lane_mask[:, :, 0] == 255] = (255, 0, 255)
             model_image = self.detection_results[0].plot()
             self.filled_image = cv2.addWeighted(model_image, 1 - alpha, red_rgb, alpha, 0)
             self.state_verbose.append("Swimmer lost")
