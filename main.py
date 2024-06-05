@@ -2,22 +2,13 @@ import pickle
 import shutil
 import time
 
-import cv2
-from matplotlib import pyplot as plt
-
 import Pool
 import Sound
-import Stroke
 from Stroke import *
-import Swimmer
 from helper import *
 
-# path = 'data/video/Fanny Lecluyse 50m SS Reeksen EK25m 2015_1 - Swimming.avi'
-# path = 'data/video/Jérôme_Florent_Manaudou_50mNl_FinA.MTS'
-# path = 'data/video/Bere Waerniers 200m VL FIN FSC 2024.MP4'
 path = 'data/video/Florine Gaspard 100m BREASTSTROKE FIN BK Open 2023.MTS'
-# path = 'data/video/Florine Gaspard 100m Breaststroke Mirrored.mp4'
-#
+
 run_name = input('Enter run name: ')
 run_time = time.time()
 
@@ -56,11 +47,16 @@ if os.path.exists(f'output/{run_name}') and input("Run exists, load data? ").upp
     plt.xlabel('Time (seconds)')
     plt.ylabel('Height')
     plt.title('Plot of Local maximum Height')
+    print(len(s.stroke_indices))
     for x in s.stroke_indices:
-        print(f'Stroke at: {x / 50}s')
         plt.axvline(x=x/50, color='r', linestyle='--', linewidth=0.25, label=f'{x/50}s')
     plt.savefig(f'output/{run_name}/stroke_plot_1000.png', dpi=1000)
     plt.show()
+
+    buzzer_freq = 1722.65625
+    buzzer_time = Sound.get_spectrogram_timestamp(path, buzzer_freq)
+    print(f'Buzzer detected at: {buzzer_time}ms')
+
 
 
 else:
@@ -109,7 +105,9 @@ else:
     plt.ylabel("Presence (1) or Absence (0)")
     plt.show()
 
-    buzzer_time = Sound.run_NN(path)
+
+    buzzer_freq = 1722.65625
+    buzzer_time = Sound.get_spectrogram_timestamp(path, buzzer_freq)
     print(f'Buzzer detected at: {buzzer_time}ms')
 
 

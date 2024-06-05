@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 from scipy.spatial import KDTree
+from scipy.spatial import distance as dstnce
 
 from helper import *
 
@@ -9,9 +10,9 @@ class Colorfilter:
     def __init__(self, color_ranges=None):
         self.color_ranges = color_ranges or {
             'yellow': ([15, 70, 80], [55, 255, 255]),
-            'blue': ([100, 100, 90], [130, 180, 255]),
+            'blue': ([100, 50, 50], [130, 180, 150]),
             'red': ([150, 100, 80], [180, 255, 235]),
-            'red2': ([0, 100, 80], [10, 255, 235]),
+            'red2': ([0, 100, 80], [10, 255, 235]), #edit 15 to 10 in upper H bound
             'green': ([70, 120, 30], [90, 255, 100])
         }
         self.mask = []
@@ -23,25 +24,27 @@ class Colorfilter:
 
         # Apply color filtering based on redMode
         if redMode:
-            result_mask = cv2.inRange(hsv_img, np.array(self.color_ranges['red'][0]),
+            result_mask1 = cv2.inRange(hsv_img, np.array(self.color_ranges['red'][0]),
                                       np.array(self.color_ranges['red'][1]))
+            result_mask2 = cv2.inRange(hsv_img, np.array(self.color_ranges['red2'][0]),
+                                      np.array(self.color_ranges['red2'][1]))
+            result_mask = cv2.bitwise_or(result_mask2, result_mask1, mask=None)
         else:
             # Combine masks for each color range
             masks = [cv2.inRange(hsv_img, np.array(min_val), np.array(max_val))
                      for (min_val, max_val) in self.color_ranges.values()]
             result_mask = masks[0]
             for mask in masks[1:]:
-                result_mask = cv2.bitwise_xor(result_mask, mask)
+                result_mask = cv2.bitwise_or(result_mask, mask)
 
         # Median blur to smooth the mask
         mask = cv2.medianBlur(result_mask, 9)
 
         # # Morphological dilation to enhance edges
-        # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        # mask = cv2.dilate(mask, kernel, iterations=4)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        mask = cv2.dilate(mask, kernel, iterations=2)
 
         mask = self.remove_small_components(mask)
-
         # Apply the mask to the frame
         res = cv2.bitwise_and(frame, frame, mask=mask)
 
@@ -174,30 +177,36 @@ class Colorfilter:
 
     def get_red_segments(self, frame, lookingAt=0):
         # TODO Merge segments that are close by one another (occurs at end of lane with flags overlapping)
+        # TODO Avoid detection of overhanging red flags
         # Merging should happen when lokking at right or left side of pool
         frame_segment_mask = self.get_lane_mask(frame, redMode=True)
+        frame_mask = self.get_lane_mask(frame, redMode=False)
+
+        segment_mask = cv2.bitwise_and(frame_segment_mask, frame_mask, mask=None)
+
+        cv2.imshow('frame_mask', segment_mask)
 
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        if lookingAt == 1: # middle of pool is more prone interference from overhanging segments
-            frame_segment_mask = cv2.dilate(frame_segment_mask, kernel, iterations=1)
+        if lookingAt == 1:# middle of pool is more prone interference from overhanging segments
+            pass
         else:
-            frame_segment_mask = cv2.dilate(frame_segment_mask, kernel, iterations=10)
+            segment_mask = cv2.dilate(segment_mask, kernel, iterations=5)
 
-        contours, _ = cv2.findContours(frame_segment_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(segment_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         centroids = []
         line_list = []
 
-        frame_mask = np.zeros_like(frame_segment_mask)
+        frame_mask = np.zeros_like(segment_mask)
 
         if len(contours) > 1:
             sorted_contours = sorted(contours, key=cv2.contourArea, reverse=True)
             largest_contour_area = cv2.contourArea(sorted_contours[0])
-            contours = [cnt for cnt in sorted_contours if cv2.contourArea(cnt) >= 0.6 * largest_contour_area]
+            contours = [cnt for cnt in contours if cv2.contourArea(cnt) >= 0.5 * largest_contour_area]
 
             if contours:  # Ensure there are contours after filtering
                 if lookingAt == 1: # Handle middle of pool
-                    for contour in contours:
+                    for contour in sorted_contours:
 
                         M = cv2.moments(contour)
                         if M['m00'] != 0:
@@ -219,54 +228,32 @@ class Colorfilter:
                                 if distance < frame.shape[0]/2:
                                     cv2.line(frame_mask, centroid, closest_centroid, (255, 0, 0), 5)
                                     line_list.append((centroid, closest_centroid))
-                elif lookingAt == 0:
-                    leftmost_points = []
-                    rightmost_points = []
-                    for contour in contours:
-                        if len(contour) >= 5:
-                            leftmost_point = tuple(contour[contour[:, :, 0].argmin()][0])
-                            rightmost_point = tuple(contour[contour[:, :, 0].argmax()][0])
-                            leftmost_points.append(leftmost_point)
-                            rightmost_points.append(rightmost_point)
+                else:
+                    lowest_points = [contour[contour[:, :, 1].argmax()][0] for contour in contours]
+                    topmost_points = [contour[contour[:, :, 1].argmin()][0] for contour in contours]
+                    leftmost_points = [contour[contour[:, :, 0].argmin()][0] for contour in contours]
+                    rightmost_points = [contour[contour[:, :, 0].argmax()][0] for contour in contours]
 
-                    # Iterate over each contour
-                    for i, contour1 in enumerate(contours):
-                        if len(contour1) >= 4:
-                            leftmost_point1 = leftmost_points[i]
-                            rightmost_point1 = rightmost_points[i]
-                            min_distance_left = float('inf')
-                            min_distance_right = float('inf')
-                            closest_left_point = None
-                            closest_right_point = None
+                    def midpoint(pt1, pt2):
+                        return (pt1[0] + pt2[0]) // 2, (pt1[1] + pt2[1]) // 2
 
-                            # Iterate over each other contour
-                            for j, contour2 in enumerate(contours):
-                                if i != j and len(contour2) >= 4:
-                                    leftmost_point2 = leftmost_points[j]
-                                    rightmost_point2 = rightmost_points[j]
-
-                                    distance_left = np.linalg.norm(
-                                        np.array(leftmost_point1) - np.array(leftmost_point2))
-                                    if distance_left < min_distance_left:
-                                        min_distance_left = distance_left
-                                        closest_left_point = leftmost_point2
-
-                                    # Calculate distances for rightmost points
-                                    distance_right = np.linalg.norm(
-                                        np.array(rightmost_point1) - np.array(rightmost_point2))
-                                    if distance_right < min_distance_right:
-                                        min_distance_right = distance_right
-                                        closest_right_point = rightmost_point2
-
-                            # Check if the closest points are within half the frame height
-                            if closest_left_point is not None and min_distance_left < frame.shape[0] / 2:
-                                cv2.line(frame_mask, leftmost_point1, closest_left_point, (255, 0, 0), 5)
-                                line_list.append((leftmost_point1, closest_left_point))
-
-                            if closest_right_point is not None and min_distance_right < frame.shape[0] / 2:
-                                cv2.line(frame_mask, rightmost_point1, closest_right_point, (255, 0, 0), 5)
-                                line_list.append((rightmost_point1, closest_right_point))
-
-        # cv2.imshow("frame segment mask", frame_mask)
+                    if lookingAt == 0:
+                        for i in range(len(contours)):
+                            if i < len(contours) - 1:
+                                pt = midpoint(lowest_points[i], leftmost_points[i])
+                                nw_pt = midpoint(lowest_points[i+1], leftmost_points[i+1])
+                                distance = np.sqrt((nw_pt[0] - pt[0]) ** 2 + (nw_pt[1] - pt[1]) ** 2)
+                                if distance < frame.shape[0]/2:
+                                    cv2.line(frame_mask, pt, nw_pt, (255, 255, 255), 2)
+                                    line_list.append((pt, nw_pt))
+                    else:
+                        for i in range(len(contours)):
+                            if i < len(contours) - 1:
+                                pt = midpoint(rightmost_points[i], lowest_points[i])
+                                nw_pt = midpoint(rightmost_points[i + 1], lowest_points[i + 1])
+                                distance = np.sqrt((nw_pt[0] - pt[0]) ** 2 + (nw_pt[1] - pt[1]) ** 2)
+                                if distance < frame.shape[0] / 2:
+                                    cv2.line(frame_mask, pt, nw_pt, (255, 255, 255), 2)
+                                    line_list.append((pt, nw_pt))
 
         return frame_mask, line_list

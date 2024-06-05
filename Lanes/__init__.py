@@ -7,6 +7,7 @@ import ColorFilter
 
 class Lane:
     def __init__(self, frame, contour, cf=ColorFilter.Colorfilter()):
+        # frame = cv2.resize(frame, None, fx=0.5, fy=0.5)
         self.cf = cf
         self.lane_n = None
         self.frame = frame
@@ -17,16 +18,19 @@ class Lane:
         self.visual_lane = None
 
     def track_lane(self, frame):
+        frame_resize = cv2.resize(frame, None, fx=0.5, fy=0.5)
         frame_cpy = frame.copy()
-        _, lane_mask = self.cf.get_lanes(frame_cpy, redMode=False)
 
-        border_mask = self.cf.swimming_pool_box(frame_cpy)[0]
+        _, lane_mask = self.cf.get_lanes(frame_resize, redMode=False)
+        border_mask = self.cf.swimming_pool_box(frame_resize)[0]
 
         if border_mask is not None:
             mask = cv2.bitwise_or(lane_mask, border_mask)
             mask = cv2.bitwise_not(mask)
         else:
             mask = cv2.bitwise_not(lane_mask)
+
+        mask = cv2.resize(mask, None, fx=2, fy=2)
 
         contours, _ = cv2.findContours(mask[:, :, 0], cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 

@@ -61,25 +61,26 @@ def validate_contours(frame, contours, prev_contour_area=200):
     valid_contours = []
     hsv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     lower_blue = np.array([90, 0, 0])
-    upper_blue = np.array([110, 255, 255])
+    upper_blue = np.array([120, 255, 255])
 
     contours = [contour for contour in contours if cv2.contourArea(contour) > prev_contour_area * 0.5]
-
+    mask = cv2.drawContours(np.zeros_like(frame), contours, -1, (255, 255, 255), thickness=cv2.FILLED)
     for contour in contours:
         mask = cv2.drawContours(np.zeros_like(frame), [contour], -1, (255, 255, 255), thickness=cv2.FILLED)
         result = cv2.bitwise_and(mask, hsv_frame)
 
         contour_pixels = cv2.countNonZero(mask[:, :, 0])
         hsv_result_mask = cv2.inRange(result, lower_blue, upper_blue)
+
         blue_pixels = cv2.countNonZero(hsv_result_mask)
 
-        if blue_pixels / contour_pixels >= 0.5:
+        if blue_pixels / contour_pixels >= 0.20:
             valid_contours.append(contour)
 
     if valid_contours:
         area_thresh = max(cv2.contourArea(contour) for contour in valid_contours) * 0.15
-        valid_contours = [contour for contour in valid_contours if cv2.contourArea(contour) > area_thresh]
-        return valid_contours
+        valid_contours_filt = [contour for contour in valid_contours if cv2.contourArea(contour) > area_thresh]
+        return valid_contours_filt
 
     else:
         # print('No valid contours found')
@@ -227,3 +228,11 @@ def plot_results(height_list=None, width_list=None, lane_angle_list=None, swimme
         plt.ylabel('Crossed (0->False; 1->True)')
         plt.title('Plot of segment crossing')
         plt.show()
+
+def local_maximum(lst, window_size=20):
+    local_maxima = []
+    for idx, i in enumerate(range(1, len(lst) - 1)):
+        if i - window_size >= 0 and i + window_size < len(lst):
+            if lst[i] == max(lst[i - window_size: i + window_size + 1]):
+                local_maxima.append(idx)
+    return local_maxima

@@ -68,6 +68,28 @@ class Pool():
     def setup(self):
         self.ready = True
 
+    def plot_with_color(self):
+        plt.title("Interpolated and filtered perceived lane angles")
+        plt.xlabel("Frame index")
+        plt.ylabel("Rotation (degrees)")
+        data = self.LD.get_filtered_list()
+
+        # Segment the data
+        below_lower = [angle for angle in data if angle < self.angle_lower_bound]
+        between_bounds = [angle for angle in data if self.angle_lower_bound <= angle <= self.angle_upper_bound]
+        above_upper = [angle for angle in data if angle > self.angle_upper_bound]
+
+        # Plot each segment with different colors
+        plt.plot(below_lower, color='blue', label=f'Below {self.angle_lower_bound}')
+        plt.plot(between_bounds, color='green', label=f'Between {self.angle_lower_bound} and {self.angle_upper_bound}')
+        plt.plot(above_upper, color='red', label=f'Above {self.angle_upper_bound}')
+
+        # Add horizontal lines for bounds
+        # plt.axhline(y=self.angle_lower_bound, color='r', linestyle='--', label=f'y = {self.angle_lower_bound}')
+        # plt.axhline(y=self.angle_upper_bound, color='g', linestyle='-.', label=f'y = {self.angle_upper_bound}')
+
+        plt.show()
+
     def initialise_lanes(self, data_path, frame_indent=100, fps_div=1):
         """
         :param frame_indent: can be used to skip frames within recording, accelerating code
@@ -98,19 +120,26 @@ class Pool():
         range_angle = max_angle + abs(min_angle)
         middle_angle = max_angle - range_angle / 2
 
-        plt.title("Interpolated and filtered perceived lane angles")
-        plt.xlabel("Frame index")
-        plt.ylabel("Rotation (degrees)")
-        plt.plot(self.LD.get_filtered_list())
+        spread = 0.25
 
-        lower_bound = middle_angle - (range_angle * 5 / 16)
-        upper_bound = middle_angle + (range_angle * 5 / 16)
+        lower_bound = middle_angle - (range_angle * spread)
+        upper_bound = middle_angle + (range_angle * spread)
 
         self.angle_lower_bound = lower_bound
         self.angle_upper_bound = upper_bound
 
-        plt.axhline(y=lower_bound, color='r', linestyle='--', label=f'y = {lower_bound}')
-        plt.axhline(y=upper_bound, color='g', linestyle='-.', label=f'y = {upper_bound}')
+        plt.title("Interpolated perceived lane angles", fontsize=14)
+        plt.xlabel("Frame index", fontsize=10)
+        plt.ylabel("Rotation (degrees)", fontsize=10)
+
+        for idx, angle in enumerate(self.LD.get_filtered_list()):
+            if angle < lower_bound:
+                plt.plot(idx, angle, 'r.')  # Plot red for values below lower_bound
+            elif lower_bound <= angle <= upper_bound:
+                plt.plot(idx, angle, 'b.')  # Plot blue for values between lower_bound and upper_bound
+            else:
+                plt.plot(idx, angle, 'g.')  # Plot green for values above upper_bound
+
         plt.show()
 
         print(f'lower_bound: {lower_bound}')
@@ -125,6 +154,7 @@ class Pool():
         """
         data_type = check_path_type(data_path)
         if data_type == "video":
+            idx = 0
             for idx, frame in enumerate(read_video(data_path, frame_skip=fps_div, verbose=False)):
                 # region PoolRegionDecision
                 # Describes where the camera is pointed at 0 being right side, 1 middle and 2 left side.
@@ -164,7 +194,7 @@ class Pool():
                         yield annotated_image
                 # endregion
             frame_numbers = [remarkable_frame[0] for remarkable_frame in self.remarkable_frames]
-            self.frame_indicator = [0] * (int(self.total_frames) + 1)
+            self.frame_indicator = [0] * (int(idx) + 1)
 
             # Update the list with frame numbers present in the tuples
             for frame_number in frame_numbers:
@@ -260,7 +290,7 @@ class Pool():
                         return
 
         initial_results = self.model.track(frame, tracker=self.tracker, verbose=True,
-                                           persist=True, conf=0.05, iou=0.2, augment=True,
+                                           persist=True, conf=0.5, iou=0.2, augment=True,
                                            agnostic_nms=True)
         for result in initial_results:
             boxes = result.boxes.cpu().numpy()

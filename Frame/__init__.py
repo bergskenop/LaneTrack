@@ -16,8 +16,9 @@ class Frame:
                  lookingAt=2, swimmer_id=None):
         self.cf = cf
         self.tracker = 'botsort.yaml'
+        # self.tracker = 'bytetrack.yaml'
         self.detection_results = model.track(frame, tracker=self.tracker, verbose=False,
-                                             persist=True, conf=0.05, iou=0.2, augment=True,
+                                             persist=True, conf=0.5, augment=True,
                                              agnostic_nms=True)[0]
         # Allow user to select swimmer to track
         self.swimmer = Swimmer.Swimmer()
@@ -53,7 +54,7 @@ class Frame:
         # Track the object ID
         self.selected_lane.track_lane(frame)
         self.detection_results = model.track(frame, tracker=self.tracker, verbose=False,
-                                             persist=True, conf=0.05, iou=0.2, augment=True,
+                                             persist=True, conf=0.5, augment=True,
                                              agnostic_nms=True)
         boxes_id = self.detection_results[0].boxes.id
         try:
@@ -111,7 +112,7 @@ class Frame:
                     overlap_with_lane = cv2.bitwise_and(frame_mask[:, :, 0], tracked_lane[:, :, 0], mask=None)
                     rect_cnt = cv2.countNonZero(frame_mask[:, :, 0])
                     overlap_cnt = cv2.countNonZero(overlap_with_lane)
-                    if overlap_cnt / rect_cnt > 0.8 and cls == 1:
+                    if overlap_cnt / rect_cnt > 0.5 and cls == 1:
                         print(f"new ID found, now tracking swimmer ID: {object_id}")
                         self.swimmer.id = object_id
                         if box_intersects_any_line(xyxy.reshape(1, 1, 4), self.red_segment_line):

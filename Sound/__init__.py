@@ -8,6 +8,7 @@ from mediapipe.tasks.python.components import containers
 from mediapipe.tasks.python import audio
 from scipy.io import wavfile
 from moviepy.editor import VideoFileClip
+from scipy.signal import stft
 
 
 def run_NN(video_path, max_results=100):
@@ -48,3 +49,45 @@ def run_NN(video_path, max_results=100):
                     pass
         os.remove('temp.wav')
         return detected_timestamps_alarm[-1]
+
+def get_spectrogram_timestamp(video_path, frequency_q, ground_timestamp=None, visualise=True):
+    video_clip = VideoFileClip(video_path)
+
+    # Extract the audio for the first 30 seconds
+    audio_clip = video_clip.audio.subclip(0, 30)
+    audio_clip.write_audiofile('temp.wav')
+
+    sample_rate, data = wavfile.read('temp.wav')
+
+    # If stereo, select a single channel (e.g., left channel)
+    if len(data.shape) > 1:
+        data = data[:, 0]
+
+    window_size = 512  # Size of each window
+    overlap = 0.5  # Overlap between consecutive windows (50%)
+    noverlap = int(window_size * overlap)
+
+    frequencies, times, Zxx = stft(data, fs=sample_rate, nperseg=window_size, noverlap=noverlap)
+
+    freq_index = np.argmin(np.abs(frequencies - frequency_q))
+    time_index = np.argmax(np.abs(Zxx[freq_index]))
+
+    time_with_max_magnitude = times[time_index]
+
+    if visualise:
+        plt.figure(figsize=(10, 6))
+        plt.pcolormesh(times, frequencies, np.abs(Zxx), shading='gouraud')
+        plt.title(f'STFT buzzer detection')
+        plt.ylabel('Frequency [Hz]')
+        plt.xlabel('Time [sec]')
+        plt.colorbar(label='Magnitude')
+        plt.axvline(x=time_with_max_magnitude, color='r', linestyle='-', linewidth=2)
+        if ground_timestamp is not None:
+            plt.axvline(x=ground_timestamp / 1000, color='g', linestyle='--', linewidth=2)
+        plt.ylim(0, 10000)  # Limit frequency range for better visualization
+        plt.show()
+        # plt.savefig(f'STFT Magnitude start detection {video_path[0]}.jpg')
+    if ground_timestamp is not None:
+        print(f'Deviation: {abs(ground_timestamp - time_with_max_magnitude * 1000)}')
+    os.remove('temp.wav')
+    return time_with_max_magnitude
