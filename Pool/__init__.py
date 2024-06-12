@@ -139,7 +139,7 @@ class Pool():
                 plt.plot(idx, angle, 'b.')  # Plot blue for values between lower_bound and upper_bound
             else:
                 plt.plot(idx, angle, 'g.')  # Plot green for values above upper_bound
-
+        plt.grid()
         plt.show()
 
         print(f'lower_bound: {lower_bound}')

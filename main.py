@@ -56,9 +56,6 @@ if os.path.exists(f'output/{run_name}') and input("Run exists, load data? ").upp
     buzzer_freq = 1722.65625
     buzzer_time = Sound.get_spectrogram_timestamp(path, buzzer_freq)
     print(f'Buzzer detected at: {buzzer_time}ms')
-
-
-
 else:
     if os.path.exists(f"output/{run_name}"):
         print(f"Removing all contents within {run_name}")
